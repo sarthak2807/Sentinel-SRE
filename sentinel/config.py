@@ -50,6 +50,11 @@ class Settings:
     baseline_seconds: int = int(os.getenv("DETECT_BASELINE_SECONDS", "300"))
     min_samples: int = int(os.getenv("DETECT_MIN_SAMPLES", "12"))
     cooldown_seconds: int = int(os.getenv("DETECT_COOLDOWN_SECONDS", "45"))
+    # A burst of this many error/warn log lines for one service (by arrival time)
+    # is an incident on its own - the path that catches read-only sources like
+    # CloudWatch, whose coarse metrics and baseline-less error logs defeat the
+    # statistical detector.
+    error_log_burst: int = int(os.getenv("DETECT_ERROR_LOG_BURST", "4"))
 
     # External sources (read-only). AWS CloudWatch is the first adapter; more
     # (Jenkins, GitHub Actions, ...) plug into the same Source protocol.
@@ -71,6 +76,10 @@ class Settings:
     @property
     def incidents_dir(self) -> Path:
         return ROOT / "incidents"
+
+    @property
+    def tickets_dir(self) -> Path:
+        return ROOT / "tickets"
 
 
 settings = Settings()

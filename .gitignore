@@ -8,4 +8,6 @@ env/
 audit.log
 .pytest_cache/
 incidents/
+tickets/
 .DS_Store
+

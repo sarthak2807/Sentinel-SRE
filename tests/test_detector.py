@@ -137,3 +137,37 @@ def test_aws_error_logs_do_not_pollute_sample_service_error_rate():
     # The sample service must NOT be dragged into an incident by AWS's errors.
     assert "sample-service" not in {a.service for a in anomalies}
 
+
+def test_error_log_burst_opens_an_incident_without_a_baseline():
+    """A read-only source (CloudWatch) gives sparse, backdated, baseline-less
+    telemetry the statistical path can't use. A burst of error logs for that
+    service must still open an incident - keyed on arrival, not event time, so
+    an account that lags behind by minutes is still caught."""
+    d = AnomalyDetector()
+    now = time.time()
+    # Six error lines whose event timestamps are two minutes stale (as a real
+    # CloudWatch poll would deliver them), with no prior healthy baseline at all.
+    for i in range(6):
+        d.observe(TelemetryEvent(
+            ts=now - 120 - i, service="aws:eu-north-1", kind="log",
+            level="error", name="cloudwatch_logs",
+            message="[ERROR] RuntimeError: simulated downstream failure (demo)",
+        ))
+
+    anomalies = d.evaluate(now)
+    assert anomalies, "an error-log burst should open an incident on its own"
+    aws = next(a for a in anomalies if a.service == "aws:eu-north-1")
+    assert any(s.name == "error_logs" for s in aws.signals)
+
+
+def test_a_couple_of_stray_errors_do_not_page():
+    """Below the burst threshold, scattered errors are not an incident."""
+    d = AnomalyDetector()
+    now = time.time()
+    for i in range(2):
+        d.observe(TelemetryEvent(
+            ts=now - i, service="aws:eu-north-1", kind="log",
+            level="error", message="transient blip",
+        ))
+    assert d.evaluate(now) == []
+

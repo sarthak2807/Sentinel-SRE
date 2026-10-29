@@ -73,6 +73,11 @@ class AnomalyDetector:
             lambda: MetricWindow(settings.baseline_seconds)
         )
         self.recent_logs: Deque[TelemetryEvent] = deque(maxlen=400)
+        # Wall-clock arrival of each log line: (received_at, service, level). Kept
+        # separate from the event's own `ts` so a source that backdates its
+        # timestamps - a real CloudWatch account lags one or two minutes - is still
+        # judged on when its errors actually reached us.
+        self._log_arrivals: Deque[tuple[float, str, str]] = deque(maxlen=400)
         self._last_fired: dict[str, float] = {}
         self.service = "sample-service"
 
@@ -83,6 +88,7 @@ class AnomalyDetector:
         self.service = service
         if event.kind == "log":
             self.recent_logs.append(event)
+            self._log_arrivals.append((time.time(), service, event.level))
             # Logs are also a metric: error rate.
             self._track(service, "error_rate", event.ts, 1.0 if event.level == "error" else 0.0)
         if event.duration_ms is not None:
@@ -154,6 +160,32 @@ class AnomalyDetector:
                 trend = self._growth_signal(name, window, now)
                 if trend:
                     graded.append((service, trend))
+
+        # Error logs are a signal in their own right. The statistical path above
+        # needs a dense, baselined metric stream - which a read-only source like
+        # CloudWatch never gives us: its metrics are one-per-minute and its error
+        # logs have no healthy baseline to deviate from. So treat a burst of
+        # freshly-arrived error/warn lines for a service as its own anomaly,
+        # keyed on arrival time so an account that lags minutes still counts.
+        log_cutoff = now - settings.window_seconds
+        errors_by_service: dict[str, int] = defaultdict(int)
+        for arrival, svc, level in self._log_arrivals:
+            if arrival >= log_cutoff and level in {"error", "warn"}:
+                errors_by_service[svc] += 1
+        services_already_firing_errors = {
+            svc for svc, s in graded if s.name == "error_rate"
+        }
+        for svc, count in errors_by_service.items():
+            if count < settings.error_log_burst or svc in services_already_firing_errors:
+                continue
+            graded.append((svc, Signal(
+                name="error_logs",
+                observed=float(count),
+                baseline=0.0,
+                zscore=float(count),
+                unit="logs",
+                note=f"{count} error/warn log lines in the last {settings.window_seconds}s",
+            )))
 
         if not graded:
             return []
@@ -271,5 +303,6 @@ def _title_for(signals: list[Signal]) -> str:
         "latency_ms": "Latency jump",
         "memory_rss_mb": "Memory growing without release",
         "db_calls_per_request": "Query count per request exploded",
+        "error_logs": "Errors in the logs",
     }
     return friendly.get(top.name, f"{top.name} out of band")

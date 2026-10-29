@@ -125,6 +125,14 @@ async def reject(incident_id: str, body: RejectBody):
     return result.model_dump()
 
 
+@app.post("/api/incidents/{incident_id}/escalate")
+async def escalate(incident_id: str):
+    if incident_id not in sentinel.incidents:
+        raise HTTPException(404, "No such incident")
+    result = await sentinel.escalate(incident_id)
+    return result.model_dump()
+
+
 @app.post("/api/ask")
 async def ask(body: AskBody):
     await bus.publish("chat", {"role": "you", "text": body.question})

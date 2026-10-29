@@ -24,6 +24,7 @@ from .memory import memory
 from .models import Anomaly, Incident, Severity, TelemetryEvent
 from .nemotron import ledger
 from .reasoning import answer_question, diagnose, triage_anomaly, write_postmortem
+from .ticketing import desk as ticket_desk
 
 log = logging.getLogger("sentinel.pipeline")
 
@@ -214,6 +215,27 @@ class Sentinel:
         incident.status = "open"
         incident.log("propose", f"Fix rejected by on-call{': ' + reason if reason else ''}")
         await self._emit(incident, "incident.rejected")
+        return incident
+
+    async def escalate(self, incident_id: str) -> Incident:
+        """File a ticket for a finding Sentinel diagnosed but won't act on.
+
+        This is the hand-off for read-only sources: Sentinel can't (and must not)
+        touch an account it only observes, so the next step is a well-formed
+        ticket carrying the diagnosis and a suggested manual runbook. Idempotent -
+        one ticket per incident, so a double-click never files a duplicate.
+        """
+        incident = self.incidents[incident_id]
+        if incident.ticket:
+            return incident
+        ticket = ticket_desk.create(incident)
+        incident.ticket = ticket
+        incident.log(
+            "escalate",
+            f"Ticket {ticket.id} filed ({ticket.priority}) -> {ticket.assignee}",
+            ticket=ticket.model_dump(mode="json"),
+        )
+        await self._emit(incident, "incident.escalated")
         return incident
 
     # ----------------------------------------------------------------- chat

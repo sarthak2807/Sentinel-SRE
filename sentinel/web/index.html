@@ -191,6 +191,23 @@
     font-size:13px;color:var(--muted);
   }
   .advisory .tag{font-weight:600;color:#ff9900;font-family:var(--mono);font-size:12px}
+  .advisory button{margin-left:auto;white-space:nowrap}
+
+  .ticket{
+    margin-top:12px;padding:12px 14px;border-radius:10px;
+    border:1px solid rgba(90,169,255,.3);background:rgba(90,169,255,.06);
+  }
+  .ticket .thead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+  .ticket .tid{font-family:var(--mono);font-weight:700;color:#5aa9ff;font-size:13px}
+  .ticket .tstatus{text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+  .ticket .tassignee{color:var(--muted)}
+  .ticket .tpath{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);opacity:.8}
+  .ticket .tbody{margin-top:8px}
+  .ticket .tbody summary{cursor:pointer;font-size:12px;color:var(--muted)}
+  .ticket .tbody pre{
+    margin:8px 0 0;padding:12px;border-radius:8px;background:var(--ground-2);
+    border:1px solid var(--edge-soft);font-size:12px;line-height:1.5;overflow:auto;white-space:pre-wrap;
+  }
 
   .signals{
     display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;padding:0;list-style:none;
@@ -620,9 +637,27 @@ function sourceBadge(inc){
 
 function advisoryBlock(inc){
   if (!inc.read_only) return "";
+  const action = inc.ticket ? "" :
+    `<button class="primary" onclick="escalate('${inc.id}')">Escalate → create ticket</button>`;
   return `<div class="advisory">
     <span class="tag">Advisory</span>
     <span>Read-only source — Sentinel diagnosed this but ran no action against the account it doesn't own.</span>
+    ${action}
+  </div>`;
+}
+
+function ticketBlock(inc){
+  const t = inc.ticket;
+  if (!t) return "";
+  return `<div class="ticket">
+    <div class="thead">
+      <span class="tid">${esc(t.id)}</span>
+      <span class="badge">${esc(t.priority)}</span>
+      <span class="tstatus">${esc(t.status)}</span>
+      <span class="tassignee">→ ${esc(t.assignee)}</span>
+      ${t.path ? `<span class="tpath">${esc(t.path)}</span>` : ""}
+    </div>
+    <details class="tbody"><summary>Ticket detail</summary><pre>${esc(t.body)}</pre></details>
   </div>`;
 }
 
@@ -669,6 +704,7 @@ function card(inc){
     <ol class="stages">${stagesDone(inc)}</ol>
     ${fixBlock(inc)}
     ${advisoryBlock(inc)}
+    ${ticketBlock(inc)}
     ${resultBlock(inc)}
     ${postmortemBlock(inc)}
     <details class="trace"><summary>Agent trace</summary><pre>${esc((inc.timeline || []).map(t => `${clock(t.ts)}  ${t.stage.padEnd(9)} ${t.detail}`).join("\n"))}</pre></details>
@@ -693,6 +729,11 @@ async function reject(id){
     method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({reason: "rejected from dashboard"})
   });
+}
+
+async function escalate(id){
+  document.querySelectorAll(".advisory button").forEach(b => { b.disabled = true; b.textContent = "Filing…"; });
+  await fetch(`/api/incidents/${id}/escalate`, {method: "POST"});
 }
 
 function addChat(role, text){

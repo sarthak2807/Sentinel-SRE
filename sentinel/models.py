@@ -141,6 +141,8 @@ class Incident(BaseModel):
     model_calls: list[dict[str, Any]] = Field(default_factory=list)
     postmortem: str | None = None
     postmortem_path: str | None = None
+    # Escalation hand-off for findings Sentinel won't act on (read-only sources).
+    ticket: Ticket | None = None
 
     def log(self, stage: str, detail: str, **extra: Any) -> None:
         self.timeline.append({"ts": _now(), "stage": stage, "detail": detail, **extra})
@@ -153,3 +155,23 @@ class MemoryHit(BaseModel):
     root_cause: str = ""
     resolution: str = ""
     occurred_at: str = ""
+
+
+class Ticket(BaseModel):
+    """A hand-off artifact for incidents Sentinel diagnoses but does not act on.
+
+    Read-only sources (a real AWS account) are observed, not remediated, so the
+    agent's job ends at a well-formed escalation: an ID, a priority, and a
+    markdown body a human can act on. A real Jira / ServiceNow / GitHub backend
+    drops in behind the same shape later; `backend` records which one filed it.
+    """
+
+    id: str
+    created_at: float = Field(default_factory=_now)
+    status: str = "open"
+    priority: str = "P3"
+    assignee: str = "on-call"
+    summary: str = ""
+    body: str = ""
+    path: str | None = None
+    backend: str = "local"
