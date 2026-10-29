@@ -58,7 +58,7 @@ Full architecture walkthrough: [`docs/architecture.md`](docs/architecture.md)
 
 ## 🎬 Demo Video
 
-**[▶ Watch the 3-minute demo on YouTube](https://youtube.com/your-demo-video-url)**
+**[▶ Watch the demo on YouTube](https://youtu.be/a0OrVer6hx4)**
 
 The demo shows:
 - **0:00–0:20** — Problem statement & baseline learning

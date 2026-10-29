@@ -20,7 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .faults import (
+from faults import (
     apply_dependency_timeout,
     apply_memory_leak,
     apply_n_plus_one,
